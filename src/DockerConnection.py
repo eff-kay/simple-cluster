@@ -3,7 +3,7 @@ import logging
 import socket
 import os
 
-from src.NginxConfigBuilder import create_nginx_config
+from src.NginxConfigBuilder import create_new_nginx_config, add_server
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(threadName)s %(levelname)s %(message)s')
@@ -27,6 +27,8 @@ if __name__=="__main__":
     IMAGE_APP = "testapp8"
     IMAGE_LB = "loadbalancer3"
 
+    create_new_nginx_config()
+
 
     while(True):
 
@@ -45,8 +47,8 @@ if __name__=="__main__":
             container_app = client.containers.run(IMAGE_APP, "python app.py", name=app_name+"-1", stderr=True, stdin_open=True, remove=True, detach=True)
 
             port = get_free_port()
-            create_nginx_config(app_name+"-1")
-            container_lb = client.containers.run(IMAGE_LB, tty=True, stderr=True, stdin_open=True, ports={'8080/tcp': port},
+            add_server(port, app_name+"-1")
+            container_lb = client.containers.run(IMAGE_LB, tty=True, stderr=True, stdin_open=True, ports={str(port)+'/tcp': port},
                                                name=app_name+"-loadbalancer", remove=True, detach=True,
                                                volumes={os.getcwd()+'/loadbalancer': {'bind': '/etc/nginx', 'mode': 'ro'}},
                                                links={app_name+"-1": app_name+"-1"})
