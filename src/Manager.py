@@ -4,6 +4,7 @@ import logging
 import socket
 import os
 import shutil
+import pickle
 
 from src.NginxConfigBuilder import *
 
@@ -30,10 +31,20 @@ def get_free_port():
 if __name__=="__main__":
 
     client = docker.from_env()
-    active_apps = {}
+
+    container_state_file = open("../containerState.p", "rb")
+
+    try:
+        active_apps= pickle.load(container_state_file)
+    except EOFError:
+        # file does not exist create one
+        active_apps={}
+        container_state_file = open("../containerState.p", "wb+")
+        pickle.dump(active_apps, container_state_file)
+
 
     # localhost for now
-    ip_addr = socket.gethostbyname(socket.gethostname())
+    ip_addr = socket.gethostbyname('localhost')
 
     shutil.rmtree(CONFIG_DIR, ignore_errors=True)
     os.mkdir(CONFIG_DIR)
@@ -54,6 +65,7 @@ if __name__=="__main__":
                 logger.info("App %s already running" % app_name)
                 continue
 
+            #TODO: this will execute even if the app is running
             container_app = client.containers.run(IMAGE_APP, "python app.py", stderr=True, stdin_open=True, remove=True, detach=True)
             container_app_ip_addr = client.containers.get(container_app.id).attrs['NetworkSettings']['Networks']['bridge']['IPAddress']
 
@@ -132,6 +144,7 @@ if __name__=="__main__":
             app_name = command[1]
             num_workers = int(command[2])
 
+            #TODO the app should not crash
             if app_name not in active_apps.keys():
                 logger.error("Application % is not active" % app_name)
                 continue
@@ -160,7 +173,9 @@ if __name__=="__main__":
                 logger.info("Application: %s, Address: %s, # workers: %d" % (app, active_apps[app][ADDR], len(active_apps[app][SERVERS])))
 
         elif command[0] == 'exit':
-            # stop all before exiting
+            with open("../containerState.p",'wb+') as cs:
+                pickle.dump(active_apps, cs)
+
             sys.exit(0)
 
         else:

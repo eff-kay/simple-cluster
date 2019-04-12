@@ -35,9 +35,11 @@ def add_server(app_name, app_server_ip_addr):
 
     c = nginx.loadf(CONFIG_DIR+app_name+'/nginx.conf')
 
+    # TODO: why are we filtering this here
     h = c.filter('Http')[0]
     c.remove(h)
 
+    #TODO why are we filtering it here
     u = h.filter('Upstream')[0]
     h.remove(u)
 
@@ -51,6 +53,7 @@ def add_server(app_name, app_server_ip_addr):
 
 def remove_server(app_name, app_server_ip_addr):
 
+    #creating a new config file everytime
     c = nginx.loadf(CONFIG_DIR+app_name+'/nginx.conf')
 
     h = c.filter('Http')[0]
