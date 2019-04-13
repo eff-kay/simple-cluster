@@ -93,6 +93,18 @@ def getCpuUsageFromEtcd(worker):
     else:
         return 0
 
+def getTotalApps():
+    running_apps = []
+    try:
+        runningApps = client.get('/apps')
+    except:
+        return None
+
+    if runningApps._children is not None:
+        for app in runningApps._children:
+            running_apps.append(app['key'].split("/")[2])
+    return running_apps
+
 
 def setCpuUsageFromEtcd(worker, val):
     client.write(worker, val)

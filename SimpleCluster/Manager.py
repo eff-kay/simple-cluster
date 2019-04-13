@@ -98,7 +98,7 @@ if __name__=="__main__":
 
             running_containers = getWorkersForApp(app_name)
             if not running_containers:
-                logger.info("Application % is not active" % app_name)
+                logger.info("Application %s is not active" % app_name)
                 continue
 
             for container_id in running_containers:
@@ -208,10 +208,16 @@ if __name__=="__main__":
 
 
         elif command[0] == 'exit':
-            # with open("../containerState.p",'wb+') as cs:
-            #     pickle.dump(active_apps, cs)
-
             sys.exit(0)
+
+        elif command[0] == 'ps':
+            total_apps = getTotalApps()
+            if len(total_apps)==0:
+                print("{0} applications running".format(0))
+            # stop all workers and the load balancer
+            else:
+                for app in total_apps:
+                    print(app)
 
         else:
             logger.error("Invalid command")
