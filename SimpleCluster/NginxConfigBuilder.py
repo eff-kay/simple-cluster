@@ -1,7 +1,6 @@
 import nginx
 
-from SimpleCluster.Manager import CONFIG_DIR
-
+CONFIG_DIR = 'loadbalancer/configs/'
 
 def create_nginx_config(nginx_port, app_name, app_server_ip_addr):
     c = nginx.Conf()

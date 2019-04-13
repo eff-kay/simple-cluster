@@ -1,20 +1,3 @@
-# client = None
-#
-# def _initializeEtcd():
-#     global client
-#     client = etcd.Client(host='127.0.0.1', port=2379)
-#     return client
-#
-# def storeContainer(appName, containerID):
-#     client = _initializeEtcd()
-#     client.write('/app/'+appName, containerID, append=True)
-#
-# def getContainers(appName):
-#     client = _initializeEtcd()
-#     dir = client.get('/app/'+appName)
-#     return dir.children
-
-
 import etcd
 
 client = etcd.Client(port=2379)
@@ -86,13 +69,6 @@ def deleteWorkerforApp(appName, workerId):
 
     return keyFound
 
-
-def getCpuUsageFromEtcd(worker):
-    if worker in client:
-        return client.get(worker).value
-    else:
-        return 0
-
 def getTotalApps():
     running_apps = []
     try:
@@ -104,10 +80,6 @@ def getTotalApps():
         for app in runningApps._children:
             running_apps.append(app['key'].split("/")[2])
     return running_apps
-
-
-def setCpuUsageFromEtcd(worker, val):
-    client.write(worker, val)
 
 if __name__=="__main__":
     print("something")

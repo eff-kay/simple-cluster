@@ -20,6 +20,8 @@ ADDR = "address"
 IMAGE_APP = "hasnainmamdani/comp598_proj_testapp"
 IMAGE_LB = "hasnainmamdani/comp598_proj_loadbalancer"
 
+
+
 def get_free_port():
   s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
   s.bind(('localhost', 0))
@@ -31,11 +33,33 @@ def get_free_port():
 # def rebuild_existing_state():
 
 
+def scale_up(app_name, num_workers):
+    client = docker.from_env()
+    running_containers = getWorkersForApp(app_name)
+    if not running_containers:
+        logger.error("App % is not active" % app_name)
+
+    for i in range(num_workers):
+        container_app = client.containers.run(IMAGE_APP, "python app.py", stderr=True, stdin_open=True, remove=True,
+                                              detach=True)
+        container_app_ip_addr = client.containers.get(container_app.id).attrs['NetworkSettings']['Networks']['bridge'][
+            'IPAddress']
+        add_server(app_name, container_app_ip_addr)
+
+        saveAppState(app_name, container_app.id)
+    container_lb = client.containers.get(app_name + "-loadbalancer")
+    container_lb.exec_run('nginx -s reload')
+    saveLbState(app_name, container_lb.id)
+
+    logger.info("Added %d more workers to the application %s. Total workers now = %d" % (
+    num_workers, app_name, len(running_containers) + num_workers))
+
+
+
 if __name__=="__main__":
+    # container_state_file = open("../containerState.p", "rb")
 
     client = docker.from_env()
-
-    # container_state_file = open("../containerState.p", "rb")
 
     active_apps={}
 
@@ -218,6 +242,36 @@ if __name__=="__main__":
             else:
                 for app in total_apps:
                     print(app)
+
+        elif command[0] == 'startautoscale':
+            if len(command) != 2:
+                logger.info("Incorrect format. Enter \"startautoscale <app_name>\"")
+                continue
+
+            app_name = command[1]
+
+            #TODO: implement autoscale
+            # runningWorkerIds = getWorkersForApp(app_name)
+            # if not runningWorkerIds:
+            #     print("{0} application is not running".format(app_name))
+            #
+            # else:
+            #     # start the auto scaler thread
+            #     t = threading.Thread(name='auto_scaling', target=start_auto_scaling, daemon=True, args=(applicationName,))
+            #     t.start()
+
+        elif command[0] == 'stopautoscale':
+            if len(command) != 2:
+                logger.info("Incorrect format. Enter \"stopautoscale <app_name>\"")
+                continue
+
+            app_name = command[1]
+
+            #TODO: implement unsubscribe
+            # runningWorkerIds = getWorkersForApp(app_name)
+            # t.start()
+
+
 
         else:
             logger.error("Invalid command")
