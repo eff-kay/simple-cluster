@@ -1,6 +1,6 @@
 import nginx
 
-from src.Manager import CONFIG_DIR
+from SimpleCluster.Manager import CONFIG_DIR
 
 
 def create_nginx_config(nginx_port, app_name, app_server_ip_addr):
@@ -35,11 +35,9 @@ def add_server(app_name, app_server_ip_addr):
 
     c = nginx.loadf(CONFIG_DIR+app_name+'/nginx.conf')
 
-    # TODO: why are we filtering this here
     h = c.filter('Http')[0]
     c.remove(h)
 
-    #TODO why are we filtering it here
     u = h.filter('Upstream')[0]
     h.remove(u)
 
