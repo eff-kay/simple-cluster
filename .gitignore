@@ -1,4 +1,4 @@
 .idea
 *.pyc
 DS_Store
-loadbalancer/configs*
+loadbalancer/configs/*
