@@ -38,6 +38,7 @@ def scale_up(app_name, num_workers):
     running_containers = getWorkersForApp(app_name)
     if not running_containers:
         logger.error("App % is not active" % app_name)
+        return
 
     for i in range(num_workers):
         container_app = client.containers.run(IMAGE_APP, "python app.py", stderr=True, stdin_open=True, remove=True,
@@ -49,11 +50,46 @@ def scale_up(app_name, num_workers):
         saveAppState(app_name, container_app.id)
     container_lb = client.containers.get(app_name + "-loadbalancer")
     container_lb.exec_run('nginx -s reload')
-    saveLbState(app_name, container_lb.id)
 
     logger.info("Added %d more workers to the application %s. Total workers now = %d" % (
     num_workers, app_name, len(running_containers) + num_workers))
 
+    return container_app.id
+
+
+
+def scale_down(app_name, num_workers):
+
+    client = docker.from_env()
+    running_containers = getWorkersForApp(app_name)
+    if not running_containers:
+        logger.error("App % is not active" % app_name)
+
+    if num_workers < 1:
+        logger.error(
+            "Invalid number of worker to remove = %d. It should be greater than zero. Skipping." % (num_workers))
+        return
+
+    if len(running_containers) <= num_workers:
+        logger.error("User intended to remove all workers. Consider stopping the application with the 'stop' command.")
+        return
+
+    for i in range(num_workers):
+        container_id = running_containers.pop()
+        container_app_ip_addr = client.containers.get(container_id).attrs['NetworkSettings']['Networks']['bridge'][
+            'IPAddress']
+        client.containers.get(container_id).stop(timeout=0)
+        remove_server(app_name, container_app_ip_addr)
+
+        deleteWorkerforApp(app_name, container_id)
+
+    container_lb = client.containers.get(app_name + "-loadbalancer")
+    container_lb.exec_run('nginx -s reload')
+
+    logger.info("Removed %d workers from the application %s. Total workers now = %d" % (
+    num_workers, app_name, len(running_containers)))
+
+    return container_id
 
 
 if __name__=="__main__":
@@ -88,7 +124,14 @@ if __name__=="__main__":
                 logger.info("Incorrect format. Enter \"start <app_name>\"")
                 continue
 
-            app_name = command[1]
+            try:
+                app_name = command[1]
+                if app_name=='':
+                    logger.info("Incorrect format. Enter \"start <app_name>\"")
+                    continue
+            except:
+                logger.info("Incorrect format. Enter \"start <app_name>\"")
+                continue
 
             running_containers = getWorkersForApp(app_name)
 
@@ -109,8 +152,7 @@ if __name__=="__main__":
                                                    volumes={os.getcwd()+'/'+CONFIG_DIR+app_name: {'bind': '/etc/nginx', 'mode': 'ro'}})
                 container_lb.exec_run('nginx -s reload')
 
-                saveLbState(app_name, container_lb.id)
-
+                saveLbState(app_name, container_lb.id, port)
                 logger.info("Application %s started with one worker at %s:%d" % (app_name, ip_addr, port))
 
         elif command[0] == 'stop':
@@ -118,7 +160,16 @@ if __name__=="__main__":
                 logger.info("Incorrect format. Enter \"stop <app_name>\"")
                 continue
 
-            app_name = command[1]
+            try:
+                app_name = command[1]
+
+                if app_name=="":
+                    logger.info("Incorrect format. Enter \"stop <app_name>\"")
+                    continue
+            except:
+                logger.info("Incorrect format. Enter \"stop <app_name>\"")
+                continue
+
 
             running_containers = getWorkersForApp(app_name)
             if not running_containers:
@@ -154,8 +205,18 @@ if __name__=="__main__":
                 logger.error("Incorrect format. Enter \"scaleup <app_name> <num_workers>\"")
                 continue
 
-            app_name = command[1]
-            num_workers = int(command[2])
+
+            try:
+                app_name = command[1]
+                num_workers = int(command[2])
+
+                if app_name=="" or num_workers=='':
+                    logger.error("Incorrect format. Enter \"scaleup <app_name> <num_workers>\"")
+                    continue
+            except:
+                logger.error("Incorrect format. Enter \"scaleup <app_name> <num_workers>\"")
+                continue
+
 
             running_containers = getWorkersForApp(app_name)
             if not running_containers:
@@ -174,7 +235,6 @@ if __name__=="__main__":
                 saveAppState(app_name, container_app.id)
             container_lb = client.containers.get(app_name+"-loadbalancer")
             container_lb.exec_run('nginx -s reload')
-            saveLbState(app_name, container_lb.id)
 
             logger.info("Added %d more workers to the application %s. Total workers now = %d" % (num_workers, app_name, len(running_containers)+num_workers))
 
@@ -184,8 +244,17 @@ if __name__=="__main__":
                 logger.error("Incorrect format. Enter \"scaledown <app_name> <num_workers>\"")
                 continue
 
-            app_name = command[1]
-            num_workers = int(command[2])
+            try:
+                app_name = command[1]
+                num_workers = int(command[2])
+
+                if app_name=="" or num_workers=='':
+                    logger.error("Incorrect format. Enter \"scaledown <app_name> <num_workers>\"")
+                    continue
+
+            except:
+                logger.error("Incorrect format. Enter \"scaledown <app_name> <num_workers>\"")
+                continue
 
             running_containers = getWorkersForApp(app_name)
             if not running_containers:
@@ -211,14 +280,21 @@ if __name__=="__main__":
             container_lb = client.containers.get(app_name+"-loadbalancer")
             container_lb.exec_run('nginx -s reload')
 
-            logger.info("Removed %d workers from the application %s. Total workers now = %d" % (num_workers, app_name, len(running_containers)-num_workers))
+            logger.info("Removed %d workers from the application %s. Total workers now = %d" % (num_workers, app_name, len(running_containers)))
 
         elif command[0] == 'list':
             if len(command) != 2:
                 logger.info("Incorrect format. Enter \"list <app_name>\"")
                 continue
 
-            app_name = command[1]
+            try:
+                app_name = command[1]
+                if app_name=="":
+                    logger.info("Incorrect format. Enter \"list <app_name>\"")
+                    continue
+            except:
+                logger.info("Incorrect format. Enter \"list <app_name>\"")
+                continue
 
             runningWorkerIds = getWorkersForApp(app_name)
             if not runningWorkerIds:
@@ -243,12 +319,39 @@ if __name__=="__main__":
                 for app in total_apps:
                     print(app)
 
+        elif command[0] == 'ip-address':
+            if len(command) != 2:
+                logger.info("Incorrect format. Enter \"ip-address <app_name>\"")
+                continue
+
+            try:
+                app_name = command[1]
+
+                if app_name=="":
+                    logger.info("Incorrect format. Enter \"ip-address <app_name>\"")
+                    continue
+            except:
+                logger.info("Incorrect format. Enter \"ip-address <app_name>\"")
+                continue
+
+            runningWorkerIds = getWorkersForApp(app_name)
+            if not runningWorkerIds:
+                print("{0} application is not running".format(app_name))
+            # stop all workers and the load balancer
+            else:
+                port = getLBPortForApp(app_name)
+                print("ip address for {} is {}".format(app_name, ip_addr+":"+port))
+
         elif command[0] == 'startautoscale':
             if len(command) != 2:
                 logger.info("Incorrect format. Enter \"startautoscale <app_name>\"")
                 continue
 
-            app_name = command[1]
+            try:
+                app_name = command[1]
+            except:
+                logger.info("Incorrect format. Enter \"list <app_name>\"")
+                continue
 
             #TODO: implement autoscale
             # runningWorkerIds = getWorkersForApp(app_name)
@@ -265,7 +368,11 @@ if __name__=="__main__":
                 logger.info("Incorrect format. Enter \"stopautoscale <app_name>\"")
                 continue
 
-            app_name = command[1]
+            try:
+                app_name = command[1]
+            except:
+                logger.info("Incorrect format. Enter \"list <app_name>\"")
+                continue
 
             #TODO: implement unsubscribe
             # runningWorkerIds = getWorkersForApp(app_name)

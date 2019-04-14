@@ -15,14 +15,29 @@ def getWorkersForApp(appName):
         return None
 
     for w in numWorkers.children:
-        if w.key != '/apps/' + appName + '/lb':
+        if w.key != '/apps/' + appName + '/lb' and w.key != '/apps/' + appName + '/lbport':
             workerIds.append(w.value)
     return workerIds
 
 
-def saveLbState(appName, lbId):
+def saveLbState(appName, lbId, port):
     client.write('/apps/' + appName + '/lb', lbId)
+    client.write('/apps/' + appName + '/lbport', port)
 
+
+def getLBPortForApp(appName):
+    lbId = None
+    try:
+        numWorkers = client.get('/apps/' + appName)
+    except:
+        return None
+
+    for w in numWorkers.children:
+        if w.key != '/apps/' + appName + '/lbport':
+            pass
+        else:
+            lbId = w.value
+    return lbId
 
 def getLbForApp(appName):
     lbId = None
@@ -50,6 +65,7 @@ def deleteAppState(appName):
 def deleteLbState(appName):
     try:
         client.delete('/apps/' + appName + '/lb')
+        client.delete('/apps/' + appName + '/lbport')
         return True
     except:
         return None

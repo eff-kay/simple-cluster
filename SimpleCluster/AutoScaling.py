@@ -1,8 +1,10 @@
+import statistics
 import docker
 
 from SimpleCluster.StateStorage import *
 from SimpleCluster.Manager import *
-
+UPPER_LIMIT =25.00
+LOWER_LIMIT = 10.00
 
 def calculate_cpu_percent(d, previous_cpu, previous_system):
     # import json
@@ -30,24 +32,55 @@ def get_cpu_percent(container_id):
     d = next(currenStats)
     cpu_percent, current_cpu, current_system = calculate_cpu_percent(d, previous_cpu, previous_system)
 
-    container_state[worker]=[current_cpu, current_system]
+    container_state[container_id]=[current_cpu, current_system]
     return cpu_percent
 
+SCALE_UP_STATBILITY=3
+SCALE_DOWN_STATBILITY=3
 
 def start_auto_scaling(app_name):
-
-    container_state = {}
-    for worker in getWorkersForApp(app_name):
+    app_workers = getWorkersForApp(app_name)
+    for worker in app_workers:
         container_state[worker]= [0,0]
 
-    while(True):
-        for worker in getWorkersForApp(app_name):
-            if get_cpu_percent(worker) >= 0.25:
-                scale_up(app_name, 1)
+    scaleup_count = 0
+    scaledown_count = 0
 
+    while(True):
+        cpu_percentage=[]
+        # we need to get the updated CPU workers
+        app_workers = getWorkersForApp(app_name)
+        for worker in app_workers:
+            cpu_percentage.append(get_cpu_percent(worker))
+
+        mean_cpu_percentage= statistics.mean(cpu_percentage)
+        if mean_cpu_percentage >= UPPER_LIMIT:
+            if scaleup_count < SCALE_UP_STATBILITY:
+                scaleup_count+=1
+                pass
+            else:
+                scaleup_count=0
+                print("scaleup", cpu_percentage)
+                container_id = scale_up(app_name, 1)
+                container_state[container_id] = [0, 0]
+
+        if mean_cpu_percentage <= LOWER_LIMIT and len(app_workers) > 1:
+            if scaledown_count < SCALE_DOWN_STATBILITY:
+                scaledown_count+=1
+                pass
+            else:
+                scaledown_count=0
+                print("scaledown", cpu_percentage)
+                container_id = scale_down(app_name, 1)
+                del container_state[container_id]
+
+
+container_state = {}
 if __name__=="__main__":
+    client = docker.from_env()
     app_name='testApp1'
-    # client = docker.from_env()
+    start_auto_scaling(app_name)
+
 
 
 
