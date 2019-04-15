@@ -4,9 +4,11 @@ import logging
 import socket
 import os
 import shutil
+import threading
 
 from SimpleCluster.NginxConfigBuilder import *
 from SimpleCluster.StateStorage import *
+from SimpleCluster.AutoScaling import *
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(threadName)s %(levelname)s %(message)s')
@@ -36,9 +38,6 @@ def get_free_port():
 def scale_up(app_name, num_workers):
     client = docker.from_env()
     running_containers = getWorkersForApp(app_name)
-    if not running_containers:
-        logger.error("App % is not active" % app_name)
-        return
 
     for i in range(num_workers):
         container_app = client.containers.run(IMAGE_APP, "python app.py", stderr=True, stdin_open=True, remove=True,
@@ -56,14 +55,10 @@ def scale_up(app_name, num_workers):
 
     return container_app.id
 
-
-
 def scale_down(app_name, num_workers):
 
     client = docker.from_env()
     running_containers = getWorkersForApp(app_name)
-    if not running_containers:
-        logger.error("App % is not active" % app_name)
 
     if num_workers < 1:
         logger.error(
@@ -92,33 +87,60 @@ def scale_down(app_name, num_workers):
     return container_id
 
 
+def house_cleaning():
+    client = docker.from_env()
+    all_live_containers = client.containers.list(all)
+
+    all_live_containers= [x.id for x in all_live_containers]
+    current_apps = getTotalApps()
+
+    for app in current_apps:
+        for container_id in getWorkersForApp(app):
+            if container_id not in all_live_containers:
+                deleteWorkerforApp(app, container_id)
+
+
+        workers_after_purge = getWorkersForApp(app)
+        if len(workers_after_purge) ==0:
+            scale_up(app, 1)
+
+
 if __name__=="__main__":
     # container_state_file = open("../containerState.p", "rb")
 
     client = docker.from_env()
 
-    active_apps={}
+    autoscaling_stop_events ={}
 
-    # try:
-    #     active_apps= pickle.load(container_state_file)
-    # except EOFError:
-    #     # file does not exist create one
-    #     active_apps={}
-    #     container_state_file = open("../containerState.p", "wb+")
-    #     pickle.dump(active_apps, container_state_file)
+    house_cleaning()
+
+
+    #populate stop events
+    current_apps= getTotalApps()
+    for app in current_apps:
+        autoscale_status = getAutoScaleStatus(app)
+        if autoscale_status=='auto':
+            stop_event = threading.Event()
+            # start the auto scaler thread
+            t = threading.Thread(name=app+"_autoscaling", target=start_auto_scaling, daemon=True, args=(app,stop_event))
+            t.start()
+            autoscaling_stop_events[app]=stop_event
 
 
     # localhost for now
     ip_addr = socket.gethostbyname('localhost')
 
-    # shutil.rmtree(CONFIG_DIR, ignore_errors=True)
-    # os.mkdir(CONFIG_DIR)
-
     while True:
 
         command = input("Next command: ").split(' ')
 
-        if command[0] == 'start':
+        if command[0]=='clean-slate':
+            apps = getTotalApps()
+            for app in apps:
+                deleteAppState(app)
+                shutil.rmtree(CONFIG_DIR + app)
+
+        elif command[0] == 'start':
 
             if len(command) != 2:
                 logger.info("Incorrect format. Enter \"start <app_name>\"")
@@ -153,6 +175,7 @@ if __name__=="__main__":
                 container_lb.exec_run('nginx -s reload')
 
                 saveLbState(app_name, container_lb.id, port)
+                setAutoScaleStatus(app_name, 'manual')
                 logger.info("Application %s started with one worker at %s:%d" % (app_name, ip_addr, port))
 
         elif command[0] == 'stop':
@@ -171,10 +194,17 @@ if __name__=="__main__":
                 continue
 
 
+
             running_containers = getWorkersForApp(app_name)
             if not running_containers:
                 logger.info("Application %s is not active" % app_name)
                 continue
+
+            autoscale_status = getAutoScaleStatus(app_name)
+
+            if autoscale_status=='auto':
+                autoscaling_stop_events[app_name].set()
+                logger.info("autoscaling for {} stopped".format(app_name))
 
             for container_id in running_containers:
                 try:
@@ -189,12 +219,10 @@ if __name__=="__main__":
                     client.containers.get(load_balancer_id).stop(timeout=0)
                 except:
                     pass
-
+            deleteAutoScaleStatus(app_name)
             deleteLbState(app_name)
             deleteAppState(app_name)
 
-
-            #TODO: add this again when fault tolerance is added
             shutil.rmtree(CONFIG_DIR+app_name)
 
             logger.info("Application %s stopped. All relevant containers destroyed" % (app_name))
@@ -225,6 +253,11 @@ if __name__=="__main__":
 
             if num_workers < 1:
                 logger.error("Invalid number of worker to add = %d. It should be greater than zero. Skipping." %(num_workers))
+                continue
+
+            autoscale_status = getAutoScaleStatus(app_name)
+            if autoscale_status=='auto':
+                logger.error("Autoscale mode enabled, disable it by running \'stop-autosclaing <app_name> \'")
                 continue
 
             for i in range(num_workers):
@@ -269,6 +302,12 @@ if __name__=="__main__":
                 logger.error("User intended to remove all workers. Consider stopping the application with the 'stop' command.")
                 continue
 
+
+            autoscale_status = getAutoScaleStatus(app_name)
+            if autoscale_status=='auto':
+                logger.error("Autoscale mode enabled, disable it by running \'stop-autosclaing <app_name> \'")
+                continue
+
             for i in range(num_workers):
                 container_id= running_containers.pop()
                 container_app_ip_addr = client.containers.get(container_id).attrs['NetworkSettings']['Networks']['bridge']['IPAddress']
@@ -301,6 +340,9 @@ if __name__=="__main__":
                 print("{0} application is not running".format(app_name))
             # stop all workers and the load balancer
             else:
+                autoscale_status = getAutoScaleStatus(app_name)
+                port = getLBPortForApp(app_name)
+                print("{} ip-address: {}, autoscale-status: {}".format(app_name, ip_addr+":"+port, autoscale_status))
                 print("{} workers running for {}".format(len(runningWorkerIds), app_name))
                 print("Container Ids")
                 for worker in runningWorkerIds:
@@ -342,9 +384,43 @@ if __name__=="__main__":
                 port = getLBPortForApp(app_name)
                 print("ip address for {} is {}".format(app_name, ip_addr+":"+port))
 
-        elif command[0] == 'startautoscale':
+        elif command[0] == 'start-autoscaling':
             if len(command) != 2:
-                logger.info("Incorrect format. Enter \"startautoscale <app_name>\"")
+                logger.info("Incorrect format. Enter \"start-autoscaling <app_name>\"")
+                continue
+
+            try:
+                app_name = command[1]
+                if app_name=="":
+                    logger.info("Incorrect format. Enter \"start-autoscaling <app_name>\"")
+                    continue
+            except:
+                logger.info("Incorrect format. Enter \"list <app_name>\"")
+                continue
+
+            runningWorkerIds = getWorkersForApp(app_name)
+            if not runningWorkerIds:
+                print("{0} application is not running".format(app_name))
+                continue
+
+            autoscale_status = getAutoScaleStatus(app_name)
+            if autoscale_status=='auto':
+                logger.error("Autoscale mode already enabled, disable it by running \'stop-autosclaing <app_name> \'")
+                continue
+
+            stop_event = threading.Event()
+            # start the auto scaler thread
+            t = threading.Thread(name=app_name+"_autoscaling", target=start_auto_scaling, daemon=True, args=(app_name,stop_event))
+            t.start()
+
+            autoscaling_stop_events[app_name]=stop_event
+
+            setAutoScaleStatus(app_name, 'auto')
+            logger.info("autoscaling for {} enabled".format(app_name))
+
+        elif command[0] == 'stop-autoscaling':
+            if len(command) != 2:
+                logger.info("Incorrect format. Enter \"stop-autoscaling <app_name>\"")
                 continue
 
             try:
@@ -353,32 +429,14 @@ if __name__=="__main__":
                 logger.info("Incorrect format. Enter \"list <app_name>\"")
                 continue
 
-            #TODO: implement autoscale
-            # runningWorkerIds = getWorkersForApp(app_name)
-            # if not runningWorkerIds:
-            #     print("{0} application is not running".format(app_name))
-            #
-            # else:
-            #     # start the auto scaler thread
-            #     t = threading.Thread(name='auto_scaling', target=start_auto_scaling, daemon=True, args=(applicationName,))
-            #     t.start()
-
-        elif command[0] == 'stopautoscale':
-            if len(command) != 2:
-                logger.info("Incorrect format. Enter \"stopautoscale <app_name>\"")
+            autoscale_status = getAutoScaleStatus(app_name)
+            if autoscale_status=='manual':
+                logger.error("Autoscale mode disabled, enable it by running \'start-autosclaing <app_name> \'")
                 continue
 
-            try:
-                app_name = command[1]
-            except:
-                logger.info("Incorrect format. Enter \"list <app_name>\"")
-                continue
-
-            #TODO: implement unsubscribe
-            # runningWorkerIds = getWorkersForApp(app_name)
-            # t.start()
-
-
+            autoscaling_stop_events[app_name].set()
+            setAutoScaleStatus(app_name, 'manual')
+            logger.info("autoscaling for {} stopped".format(app_name))
 
         else:
             logger.error("Invalid command")

@@ -1,6 +1,7 @@
 import statistics
 import docker
 
+import threading
 from SimpleCluster.StateStorage import *
 from SimpleCluster.Manager import *
 UPPER_LIMIT =25.00
@@ -38,7 +39,7 @@ def get_cpu_percent(container_id):
 SCALE_UP_STATBILITY=3
 SCALE_DOWN_STATBILITY=3
 
-def start_auto_scaling(app_name):
+def start_auto_scaling(app_name, stop_event):
     app_workers = getWorkersForApp(app_name)
     for worker in app_workers:
         container_state[worker]= [0,0]
@@ -46,7 +47,7 @@ def start_auto_scaling(app_name):
     scaleup_count = 0
     scaledown_count = 0
 
-    while(True):
+    while(True) and not stop_event.is_set():
         cpu_percentage=[]
         # we need to get the updated CPU workers
         app_workers = getWorkersForApp(app_name)
@@ -60,7 +61,7 @@ def start_auto_scaling(app_name):
                 pass
             else:
                 scaleup_count=0
-                print("scaleup", cpu_percentage)
+                logger.info("scaleup, cpu_percentage: {}".format(mean_cpu_percentage))
                 container_id = scale_up(app_name, 1)
                 container_state[container_id] = [0, 0]
 
@@ -70,16 +71,18 @@ def start_auto_scaling(app_name):
                 pass
             else:
                 scaledown_count=0
-                print("scaledown", cpu_percentage)
+                logger.info("scaledown, cpu_percentage: {}".format(mean_cpu_percentage))
                 container_id = scale_down(app_name, 1)
                 del container_state[container_id]
 
 
 container_state = {}
+client = docker.from_env()
+
 if __name__=="__main__":
-    client = docker.from_env()
     app_name='testApp1'
-    start_auto_scaling(app_name)
+    stop_event=threading.Event()
+    start_auto_scaling(app_name, stop_event)
 
 
 

@@ -3,6 +3,15 @@ import etcd
 client = etcd.Client(port=2379)
 
 
+
+def setAutoScaleStatus(appName, status):
+    client.write('/apps/' + appName + '/auto-scale-status', status)
+
+
+def getAutoScaleStatus(appName):
+    return client.get('/apps/' + appName + '/auto-scale-status').value
+
+
 def saveAppState(appName, id):
     client.write('/apps/' + appName, id, append=True)
 
@@ -15,7 +24,7 @@ def getWorkersForApp(appName):
         return None
 
     for w in numWorkers.children:
-        if w.key != '/apps/' + appName + '/lb' and w.key != '/apps/' + appName + '/lbport':
+        if w.key != '/apps/' + appName + '/lb' and w.key != '/apps/' + appName + '/lbport' and w.key != '/apps/' + appName + '/auto-scale-status':
             workerIds.append(w.value)
     return workerIds
 
@@ -53,6 +62,12 @@ def getLbForApp(appName):
             lbId = w.value
     return lbId
 
+def deleteAutoScaleStatus(appName):
+    try:
+        client.delete('/apps/' + appName + '/auto-scale-status')
+        return True
+    except:
+        return None
 
 def deleteAppState(appName):
     try:
