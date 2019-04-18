@@ -37,7 +37,7 @@ def get_cpu_percent(container_id):
     return cpu_percent
 
 SCALE_UP_STATBILITY=3
-SCALE_DOWN_STATBILITY=3
+SCALE_DOWN_STATBILITY=1
 
 def start_auto_scaling(app_name, stop_event):
     app_workers = getWorkersForApp(app_name)
