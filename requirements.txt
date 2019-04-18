@@ -7,6 +7,7 @@ grpcio==1.19.0
 idna==2.8
 protobuf==3.7.0
 python-etcd==0.4.5
+python-nginx==1.5.3
 requests==2.21.0
 six==1.12.0
 tenacity==5.0.3

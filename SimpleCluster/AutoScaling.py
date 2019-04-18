@@ -36,6 +36,8 @@ def get_cpu_percent(container_id):
     container_state[container_id]=[current_cpu, current_system]
     return cpu_percent
 
+
+# The cost of scaling up is more than that cost of scaling down. Also subsequent scale down does not mean subsequent scale up.
 SCALE_UP_STATBILITY=3
 SCALE_DOWN_STATBILITY=1
 
