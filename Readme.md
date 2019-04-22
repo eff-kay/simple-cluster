@@ -1,3 +1,5 @@
+A simple cloud (docker clusters) management tool written in python. It provides, manual scaling, auto scaling and fault-tolerance
+
 ### Steps
 1. make sure you create a python3 virtualenv and activate it 
 1. do pip install -r requirements
