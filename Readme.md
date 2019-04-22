@@ -1,4 +1,4 @@
-A simple cloud (docker clusters) management tool written in python. It provides, manual scaling, auto scaling and fault-tolerance
+A simple cloud (cluster of docker containers) management tool written in python. It provides, manual scaling, auto scaling and fault-tolerance.
 
 ### Steps
 1. make sure you create a python3 virtualenv and activate it 
@@ -25,5 +25,4 @@ if its running on a different port, set it in the SimpleCluster/StateStorage.py 
 ### Parallel Threads
 We have two parallel threads running apart from the main one
 1. auto-scaling thread, that is started or stop with the autoscaling command
-2. house-cleaning thread, this is started as soon as the manager starts. This monitors the number of workers that should be running.
-This is responsible for respawning dead workers. The check is made every 10 secs.
+2. house-cleaning thread, this is started as soon as the manager starts. This monitors the number of workers that should be running for a particular application. This threa is responsible for respawning dead workers. The check is made every 10 secs.
