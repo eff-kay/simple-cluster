@@ -11,5 +11,5 @@ python-nginx==1.5.3
 requests==2.21.0
 six==1.12.0
 tenacity==5.0.3
-urllib3==1.24.1
+urllib3==1.26.5
 websocket-client==0.56.0
